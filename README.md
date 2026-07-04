@@ -11,7 +11,7 @@
 
 ## 项目依赖
 
-本仓库本身只是一份操作手册（README），实际起作用的是下面这个上游项目，部署步骤会调用它的一键安装脚本：
+本仓库本身只是一份操作手册（README），实际起作用的是下面这个上游项目的发布包。由于原有脚本运行 URL 已经过期，本仓库已经内置 `vohive-release-1.5.5.zip`，部署时先下载这个 zip 包，解压后再运行里面的脚本。
 
 ### [iniwex5/vohive-release](https://github.com/iniwex5/vohive-release)
 
@@ -26,9 +26,13 @@
 
 **适用环境：** Linux（Debian/Ubuntu/树莓派/NAS）+ 移远 EC20CE / EM500Q / 高通 410 WIFI 板 / 各类高通 4G USB 模组（需 SIM 卡槽或带 SIM 卡槽的 USB 底板）。本仓库的作用正是让 Mac 用户通过 UTM Linux VM + USB 直通，把大疆 4G 模块变成 VoHive 能认的 Quectel EC25，从而跑起 VoHive。
 
-**部署方式：** 一键脚本（本仓库采用）或 Docker Compose。
+**部署方式：** 下载本仓库内置的 `vohive-release-1.5.5.zip`，解压后执行其中的一键安装脚本（本仓库采用）或 Docker Compose。
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iniwex5/vohive-release/master/install.sh | bash
+curl -L -o vohive-release-1.5.5.zip \
+  https://raw.githubusercontent.com/wlzh/dji-4g-vohive-mac/main/vohive-release-1.5.5.zip
+unzip -o vohive-release-1.5.5.zip
+cd vohive-release-1.5.5
+bash install.sh
 ```
 安装后：二进制 `/opt/vohive/bin/vohive`，配置 `/opt/vohive/config/config.yaml`，systemd 服务 `vohive`，后台 `http://<IP>:7575`（默认 `admin/admin`）。
 
@@ -178,7 +182,12 @@ lsusb
 模块身份改完且直通稳定后，在 VM 里执行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iniwex5/vohive-release/master/install.sh | bash
+sudo apt-get update && sudo apt-get install -y unzip
+curl -L -o vohive-release-1.5.5.zip \
+  https://raw.githubusercontent.com/wlzh/dji-4g-vohive-mac/main/vohive-release-1.5.5.zip
+unzip -o vohive-release-1.5.5.zip
+cd vohive-release-1.5.5
+bash install.sh
 ```
 
 脚本会：
@@ -207,18 +216,30 @@ http://<VM的IP>:7575
 
 #### 更新 vohive
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iniwex5/vohive-release/master/install.sh | bash
+curl -L -o vohive-release-1.5.5.zip \
+  https://raw.githubusercontent.com/wlzh/dji-4g-vohive-mac/main/vohive-release-1.5.5.zip
+unzip -o vohive-release-1.5.5.zip
+cd vohive-release-1.5.5
+bash install.sh
 ```
 脚本会自动备份旧二进制到 `/opt/vohive/bin/vohive.bak` 再覆盖。
 
 #### 卸载 vohive
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iniwex5/vohive-release/master/uninstall.sh | bash
+curl -L -o vohive-release-1.5.5.zip \
+  https://raw.githubusercontent.com/wlzh/dji-4g-vohive-mac/main/vohive-release-1.5.5.zip
+unzip -o vohive-release-1.5.5.zip
+cd vohive-release-1.5.5
+bash uninstall.sh
 ```
 
 #### 不用 systemd 的环境（如容器/WSL，本方案用不到）
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iniwex5/vohive-release/master/install.sh | bash -s -- --no-systemd
+curl -L -o vohive-release-1.5.5.zip \
+  https://raw.githubusercontent.com/wlzh/dji-4g-vohive-mac/main/vohive-release-1.5.5.zip
+unzip -o vohive-release-1.5.5.zip
+cd vohive-release-1.5.5
+bash install.sh --no-systemd
 # 手动启动：/opt/vohive/bin/vohive -c /opt/vohive/config/config.yaml
 ```
 
@@ -275,7 +296,12 @@ echo 'AT+QCFG="usbcfg",0x2C7C,0x0125,1,1,1,1,1,0,0' | socat - /dev/ttyUSB2,crnl
 echo 'AT+CFUN=1,1' | socat - /dev/ttyUSB2,crnl
 lsusb   # → 2c7c:0125 Quectel EC25
 # → UTM 把直通重新绑到 2c7c:0125 / 物理端口
-curl -fsSL https://raw.githubusercontent.com/iniwex5/vohive-release/master/install.sh | bash
+sudo apt-get install -y unzip
+curl -L -o vohive-release-1.5.5.zip \
+  https://raw.githubusercontent.com/wlzh/dji-4g-vohive-mac/main/vohive-release-1.5.5.zip
+unzip -o vohive-release-1.5.5.zip
+cd vohive-release-1.5.5
+bash install.sh
 # → Mac 浏览器开 http://<VM-IP>:7575，admin/admin
 ```
 
