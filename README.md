@@ -15,6 +15,190 @@
 - 同时覆盖 **Apple Silicon（arm64）** 和 **Intel（x86_64）** 两种 Mac：两者只有 ISO 和 VM 架构不同，VM 内所有操作完全一致。
 - 包含 USB 直通、改身份后重新枚举断直通的坑及处理、验证清单、维护命令、方案选型对比。
 
+## VoHive 是什么
+
+> 你的副机未必需要是把手机，可以是 VoHive。短信转发 / eSIM管理 / VoWiFi
+
+VoHive 是一个面向移远 4G 模组的管理平台，适合拿移远 EC20 这类 USB 模组做：
+
+- 网页/Bot 收发短信
+- 多卡统一管理
+- 实体 eSIM / eUICC 管理（加卡、切卡、删卡）
+- 基于手机卡流量的代理池（SOCKS5 / HTTP，按设备网卡强绑定出站）
+- TelegramBot / 飞书Bot / QQBot 远程控制
+- 在条件满足时启用 VoWiFi
+- 通过 `/vocall` 发起 VoWiFi 模拟外呼
+
+`/vocall` 这个功能比较适合：
+- CTE UK / CMLINK UK 这类需要本地拨打运营商电话才能激活的号码
+- 其他需要定期拨打一通电话做保号的海外号码
+
+**VoHive 完全免费。**
+
+### 一、适用环境
+
+**硬件推荐：**
+- EC20CEFAG
+- EC20CEFHLG
+- 可以小黄鱼几十块买到
+- 要求：设备具备 SIM 卡槽，或搭配带 SIM 卡槽的 USB 底板
+
+**系统建议：**
+- Debian / Ubuntu
+- 树莓派
+- NAS
+
+### 二、部署前先禁用宿主机 ModemManager
+
+这一步很重要。很多发行版会默认启动 ModemManager，它会抢占 `/dev/ttyUSB*` AT 端口，导致模组识别、短信、AT 口访问异常。
+
+```bash
+# 检查状态
+systemctl status ModemManager
+
+# 如果在运行，直接禁用
+sudo systemctl stop ModemManager
+sudo systemctl disable ModemManager
+sudo systemctl mask ModemManager
+
+# 再次确认
+systemctl status ModemManager
+```
+
+> 即使后面使用 Docker，这一步也必须在宿主机上做。
+
+### 三、可选：把模组切到更合适的 USBNET 模式
+
+如果你确认模组当前模式不对，可以执行：
+
+```bash
+sudo apt update
+sudo apt install -y socat
+
+echo 'AT+QCFG="usbnet",0;+CFUN=1,1' | sudo socat - /dev/ttyUSB2,crnl
+```
+
+- `AT+QCFG="usbnet",0`：切到常见的 QMI 模式
+- `AT+CFUN=1,1`：重启模组
+- `/dev/ttyUSB2` 只是示例，实际 AT 口请按你的设备调整
+
+### 四、部署方式一：一键安装
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iniwex5/vohive-release/master/install.sh | bash
+```
+
+指定版本：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iniwex5/vohive-release/master/install.sh | bash -s -- --version v1.0.0
+```
+
+仅安装二进制（不安装 systemd）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iniwex5/vohive-release/master/install.sh | bash -s -- --no-systemd
+```
+
+卸载：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iniwex5/vohive-release/master/uninstall.sh | bash
+```
+
+默认安装目录（便携部署）：
+- 二进制：`/opt/vohive/bin/vohive`
+- 配置：`/opt/vohive/config/config.yaml`
+- 数据：`/opt/vohive/data`
+- 日志：`/opt/vohive/logs`
+
+### 五、部署方式二：Docker / Docker Compose
+
+```bash
+# 1. 创建目录
+mkdir -p vohive/{config,data,logs}
+cd vohive
+```
+
+创建 `config/config.yaml`：
+
+```yaml
+server:
+  port: 7575
+  debug: false
+
+web:
+  username: admin
+  password: admin123
+```
+
+创建 `docker-compose.yml`：
+
+```yaml
+services:
+  vohive:
+    image: iniwex/vohive:latest
+    container_name: vohive
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - TZ=Asia/Shanghai
+      - CONFIG_PATH=/app/config/config.yaml
+    devices:
+      - /dev:/dev
+```
+
+启动：
+
+```bash
+docker compose up -d
+```
+
+访问后台：`http://你的服务器IP:7575`
+
+> Docker 部署也要先禁用宿主机 ModemManager。这里用了 privileged、`/dev` 透传和 host network，因为程序需要直接接管模组设备。
+
+### 六、机器人常用命令
+
+| 命令 | 说明 |
+|---|---|
+| `/list` | 查看设备列表 |
+| `/sms 设备ID` | 查看最近短信 |
+| `/send 设备ID 号码 内容` | 发送短信 |
+| `/rotate 设备ID` | 切换 IP |
+| `/esim 设备ID` | 查看 eSIM profile |
+| `/switch 设备ID 序号或ICCID` | 切换 eSIM profile |
+| `/vocall 设备ID 号码` | 发起 VoWiFi 模拟呼叫 |
+
+### 七、补充说明
+
+- VoWiFi 不是只要有网就一定能用，还取决于运营商、号码状态和网络环境要求
+- 如果你的需求只是短信、代理池、多模组管理，不折腾 VoWiFi 也可以先用起来
+- 本程序已禁止国内运营商卡发起 VoWiFi，请遵纪守法
+- 未标出的运营商不代表不兼容，只是作者没有测试
+
+### 八、已知 VoHive 支持 VoWiFi 的运营商
+
+| 运营商 | 国家/地区 |
+|---|---|
+| CTE UK | 英国 |
+| CMLINK UK | 英国 |
+| giffgaff UK | 英国 |
+| VOXI UK | 英国 |
+| Vodafone UK | 英国 |
+| 3UK | 英国 |
+| Vodafone DE | 德国 |
+| Telekom DE | 德国 |
+| O2 DE | 德国 |
+| T-Mobile US | 美国 |
+
+---
+
 ## 项目依赖
 
 本仓库本身只是一份操作手册（README），实际起作用的是上游 **[iniwex5/vohive-release](https://github.com/iniwex5/vohive-release)** 的发布资产。上游仓库仍在，但其最新 release `v1.5.5` **已无可下载的二进制 asset**（`vohive_v1.5.5_linux_<arch>` 实测 HTTP 404，release 的 assets 列表为空），在线安装脚本会在「下载二进制」那步失败。为此本仓库内置了两份可离线使用的资产：
@@ -26,32 +210,11 @@
 
 > ⚠️ 上游二进制 404 后，**Apple Silicon（方案 A，arm64）暂无内置离线二进制**：可继续试 `vohive-release-1.5.5.zip` 在线方式（等上游修复 asset），或自行备一份 `vohive_<ver>_linux_arm64` 后参照 `vohive-backup.tar.gz` 里的 `install.sh` 离线安装。Intel Mac（方案 B）直接用 `vohive-backup.tar.gz` 即可全程离线部署。
 
-### [iniwex5/vohive-release](https://github.com/iniwex5/vohive-release)
+### 上游项目
 
-**VoHive** 是面向高通 4G/5G 模组场景的一体化管理与代理平台，核心能力：
+详见上方「[VoHive 是什么](#vohive-是什么)」章节，包含完整的功能介绍、部署方式、机器人命令和 VoWiFi 运营商列表。
 
-- 网页 / Bot 收发短信
-- 多卡统一管理
-- 实体 eSIM / eUICC 管理（加卡、切卡、删卡）
-- 转量代理：支持 `SOCKS5/HTTP` 实例，按设备网卡强绑定出站
-- TelegramBot / 飞书Bot / QQBot 远程控制
-- 条件满足时启用 VoWiFi，并通过 `/vocall` 发起 VoWiFi 模拟外呼
-
-**适用环境：** Linux（Debian/Ubuntu/树莓派/NAS）+ 移远 EC20CE / EM500Q / 高通 410 WIFI 板 / 各类高通 4G USB 模组（需 SIM 卡槽或带 SIM 卡槽的 USB 底板）。本仓库的作用正是让 Mac 用户通过 UTM Linux VM + USB 直通，把大疆 4G 模块变成 VoHive 能认的 Quectel EC25，从而跑起 VoHive。
-
-**部署方式：** 下载本仓库内置的 `vohive-release-1.5.5.zip`，解压后执行其中的一键安装脚本（本仓库采用）或 Docker Compose。
-```bash
-curl -L -o vohive-release-1.5.5.zip \
-  https://raw.githubusercontent.com/wlzh/dji-4g-vohive-mac/main/vohive-release-1.5.5.zip
-unzip -o vohive-release-1.5.5.zip
-cd vohive-release-1.5.5
-bash install.sh
-```
-安装后：二进制 `/opt/vohive/bin/vohive`，配置 `/opt/vohive/config/config.yaml`，systemd 服务 `vohive`，后台 `http://<IP>:7575`（默认 `admin/admin`）。
-
-**机器人常用命令：** `/list` 列设备、`/sms 设备ID` 看短信、`/send 设备ID 号码 内容` 发短信、`/rotate 设备ID` 换 IP、`/esim`、`/switch` 切 eSIM、`/vocall` VoWiFi 呼叫。
-
-> ⚠️ VoHive 已禁止国内运营商卡发起 VoWiFi；VoWiFi 支持的运营商列表（CTE UK / giffgaff UK / Vodafone UK/DE / Telekom DE / O2 DE / T-Mobile US 等）见上游 README。
+> ⚠️ 上游 v1.5.5 二进制已 404，本仓库内置离线资产作为替代方案。
 
 ---
 
